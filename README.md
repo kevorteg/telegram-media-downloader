@@ -1,68 +1,72 @@
 # 🤖 Telegram Media Downloader Bot
 
-Un bot de Telegram avanzado y "Cloud-Ready" diseñado para descargar, procesar y reenviar videos desde múltiples plataformas (Twitter/X, Instagram, TikTok, y más) automáticamente.
+A powerful, cloud-ready Telegram bot designed to automatically download, process, and forward media from **Twitter (X), Instagram, TikTok, YouTube (Shorts)**, and thousands of other sites supported by `yt-dlp`.
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![FFmpeg](https://img.shields.io/badge/FFmpeg-Enabled-green)
-![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-Enabled-green?style=for-the-badge&logo=ffmpeg&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
 
-## ✨ Características
+## ✨ Key Features
 
-*   **Multi-Plataforma**: Descarga de Twitter (X), Instagram, TikTok, Facebook, YouTube (Shorts), y +1000 sitios soportados por `yt-dlp`.
-*   **Gestión Inteligente de Video**:
-    *   **Fix de Aspect Ratio**: Usa FFmpeg para detectar dimensiones reales y evitar videos "estirados" en Telegram.
-    *   **Compresión Automática**: Si un video supera los 50MB, lo comprime automáticamente para poder enviarlo.
-*   **Monitor de Likes**: (Opcional) Revisa automáticamente los "Likes" de una cuenta de Twitter cada X minutos y descarga los videos nuevos.
-*   **Cookies Vía Entorno**: Soporte para cargar cookies desde una Variable de Entorno (`COOKIES_CONTENT`), ideal para despliegues en la nube (Koyeb, Render) sin exponer archivos sensibles.
-*   **Auto-Limpieza**: Borra los archivos descargados inmediatamente después de enviarlos para ahorrar espacio.
+*   **Multi-Platform Support**: Downloads high-quality videos from Twitter/X, Instagram, TikTok, Facebook, Reddit, and basically any site supported by `yt-dlp`.
+*   **Smart Video Processing**:
+    *   **Auto-Compression**: Automatically compresses videos larger than 50MB to fit within Telegram Bot API limits, ensuring delivery even for long content.
+    *   **Aspect Ratio Fix**: Uses FFmpeg to detect real video dimensions, preventing the "stretched video" glitch common in Telegram bots.
+*   **Twitter Like Monitor**: (Optional) Automatically monitors a target Twitter account's "Likes" and downloads new videos as they are liked.
+*   **Cloud-Native & Secure**:
+    *   **Dockerized**: Comes with a standardized `Dockerfile` including FFmpeg.
+    *   **Environment Cookies**: Supports loading sensitive cookies via Environment Variables (`COOKIES_CONTENT`), eliminating the need to upload `cookies.txt` to public repositories.
+*   **Storage Efficient**: Auto-deletes downloaded files immediately after forwarding to keep disk usage near zero.
 
-## 🚀 Despliegue Rápido (Cloud)
+## 🚀 Quick Deployment (Koyeb / Render)
 
-Este proyecto está optimizado para **Koyeb** o **Render**.
+This project is optimized for PaaS platforms like **Koyeb**.
 
-### Pasos en Koyeb:
-1.  Haz Fork de este repositorio.
-2.  Crea un nuevo **Web Service** en Koyeb seleccionando tu repo.
-3.  **Builder**: Selecciona **Dockerfile** (se detectará automáticamente).
-4.  **Variables de Entorno (Environment Variables)**: Añade las siguientes:
+1.  **Fork** this repository.
+2.  Create a new **Web Service** on Koyeb connected to your repo.
+3.  **Builder**: Select **Dockerfile**.
+4.  **Environment Variables**: Add the following required variables:
 
-| Variable | Descripción |
+| Variable | Description |
 | :--- | :--- |
-| `TELEGRAM_BOT_TOKEN` | Token de tu bot (de @BotFather). |
-| `TARGET_CHANNEL_ID` | ID del canal/grupo donde se enviarán los videos. |
-| `TWITTER_USERNAME` | (Opcional) Usuario de Twitter para monitorear likes. |
-| `COOKIES_CONTENT` | Contenido completo de tu archivo `cookies.txt` (copiar y pegar texto). |
-| `ADMIN_USER_IDS` | (Opcional) IDs de usuarios admin separados por comas. |
+| `TELEGRAM_BOT_TOKEN` | Your Bot Token from @BotFather. |
+| `TARGET_CHANNEL_ID` | The Chat ID of the channel/group where videos will be sent. |
+| `TWITTER_USERNAME` | (Optional) Twitter username to monitor for likes (without @). |
+| `COOKIES_CONTENT` | (Optional/Recommended) Copy & Paste the full content of your `cookies.txt` here to access restricted/18+ content. |
+| `ADMIN_USER_IDS` | (Optional) Comma-separated list of User IDs allowed to use admin commands. |
 
-5.  Dale a **Deploy**.
+5.  Click **Deploy**.
 
-## 💻 Ejecución Local
+## 💻 Local Installation
 
-### Requisitos
-*   Python 3.10+
-*   **FFmpeg** instalado y en el PATH del sistema.
+### Prerequisites
+*   Python 3.10 or higher.
+*   **FFmpeg** installed and added to your system PATH.
 
-### Instalación
-1.  Clonar el repositorio:
+### Setup
+1.  Clone the repository:
     ```bash
     git clone https://github.com/kevorteg/telegram-media-downloader.git
     cd telegram-media-downloader
     ```
-2.  Instalar dependencias:
+2.  Install dependencies:
     ```bash
     pip install -r requirements.txt
     ```
-3.  Crear archivo `.env` basado en el ejemplo y configurar tus tokens.
-4.  (Opcional) Colocar tu archivo `cookies.txt` en la carpeta `autovideo/` para acceso a sitios restringidos.
-5.  Ejecutar:
+3.  Create a `.env` file (copy from `.env.example` if available) and configure your secrets.
+4.  Run the bot:
     ```bash
     python autovideo/bot.py
     ```
 
-## 🔒 Privacidad y Cookies
-El bot soporta el uso de cookies exportadas (formato Netscape) para acceder a contenido +18 o restringido (Twitter, sitios para adultos, etc.).
-*   **Local**: Pon el archivo `cookies.txt` en la carpeta raíz.
-*   **Nube**: Copia el contenido del archivo en la variable `COOKIES_CONTENT`.
+## 🍪 Cookie Management
 
-## 📄 Licencia
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+To download content from age-gated or restricted sites (Twitter NSFW, etc.), the bot needs browser cookies.
+
+*   **Method A (Local)**: Place your `cookies.txt` (Netscape format) in the `autovideo/` directory.
+*   **Method B (Cloud)**: Copy the text content of your `cookies.txt` and paste it into the `COOKIES_CONTENT` environment variable.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
