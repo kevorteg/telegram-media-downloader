@@ -45,5 +45,22 @@ def main():
     logger.info("Bot en ejecución. Presiona Ctrl+C para detener.")
     application.run_polling()
 
+def check_env_cookies():
+    """
+    Para despliegues en la nube (Koyeb/Render), permite pasar el contenido 
+    de cookies.txt como una variable de entorno llamada COOKIES_CONTENT.
+    """
+    env_cookies = os.environ.get("COOKIES_CONTENT")
+    if env_cookies:
+        cookies_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')
+        # Solo escribir si no existe o si queremos forzar actualización
+        try:
+            with open(cookies_path, 'w', encoding='utf-8') as f:
+                f.write(env_cookies)
+            logger.info("✅ Cookies cargadas desde variable de entorno COOKIES_CONTENT")
+        except Exception as e:
+            logger.error(f"❌ Error escribiendo cookies desde ENV: {e}")
+
 if __name__ == '__main__':
+    check_env_cookies()
     main()
