@@ -1,0 +1,25 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Cookies (Sensitive!)
+cookies.txt
+autovideo/cookies.txt
+autovideo/onlyfans.com_cookies.txt
+
+# Storage
+storage/
+autovideo/storage/
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# Brain artifacts
+.gemini/
