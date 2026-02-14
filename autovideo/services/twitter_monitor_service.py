@@ -28,6 +28,7 @@ class TwitterMonitorService:
         
         # Usar credenciales si existen
         cookies_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies.txt')
+        
         if os.path.exists(cookies_path):
             ydl_opts['cookiefile'] = cookies_path
         elif settings.TWITTER_USERNAME and settings.TWITTER_PASSWORD:

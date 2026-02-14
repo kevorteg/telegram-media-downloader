@@ -8,6 +8,7 @@ from autovideo.services.video_service import video_service
 from autovideo.services.publish_service import publish_service
 from autovideo.utils.file_utils import clean_directory
 from autovideo.config.groups import get_destination_channels
+from autovideo.utils.logger import logger
 
 from autovideo.services.history_service import history_service
 
@@ -38,9 +39,35 @@ async def handle_message_with_links(update: Update, context: ContextTypes.DEFAUL
 
     status_message = await update.message.reply_text("⏳ Descargando video...")
 
+    import asyncio
+    
     try:
         # 1. Descargar (ahora retorna lista)
-        media_list = downloader_service.download_video(target_url)
+        # Función para actualizar progreso (se ejecuta en hilo de descarga)
+        def update_progress(percent_str):
+            try:
+                # Filtrar actualizaciones para no floodear la API de Telegram
+                # Solo actualizar cada 20% o cuando termine, o simularlo
+                # Lo mejor es un "debounce" simple o solo actualizar cada X segundos.
+                # Como es complicado pasar estado al callback simple, 
+                # usaremos una aproximación: solo actualizar si cambia el primer dígito (cada 10%)
+                # Ojo: esto corre en otro hilo, necesitamos schedulear la corrutina
+                
+                # Hack simple para rate limit: solo si termina en '0' o '5' (cada 5%)
+                if percent_str.endswith('0') or percent_str.endswith('5'):
+                     asyncio.run_coroutine_threadsafe(
+                        status_message.edit_text(f"⏳ Descargando video... {percent_str}%"),
+                        context.application.loop
+                    )
+            except Exception:
+                pass
+
+        # Ejecutar en executor para no bloquear el loop principal
+        loop = asyncio.get_running_loop()
+        media_list = await loop.run_in_executor(
+            None, 
+            lambda: downloader_service.download_video(target_url, progress_callback=update_progress)
+        )
         
         if not media_list:
             await status_message.edit_text("❌ Error al descargar el video (posiblemente borrado o inaccesible).")
