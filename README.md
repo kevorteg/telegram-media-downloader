@@ -9,6 +9,10 @@ A powerful, cloud-ready Telegram bot designed to automatically download, process
 
 ## Key Features
 
+*   **Universal Multi-stage Strategy**: 🚀
+    - **Step 1 (Clean)**: Attempts an anonymous download first (No cookies). This ensures compatibility with YouTube, TikTok, and other platforms without credential baggage.
+    - **Step 2 (Twitter Hybrid)**: For X.com links, it automatically triggers a `gallery-dl` extraction if standard methods fail.
+    - **Step 3 (Authenticated)**: Uses provided `cookies.txt` only as a final fallback for restricted or age-gated content.
 *   **Multi-Platform Support**: Downloads high-quality videos from Twitter/X, Instagram, TikTok, Facebook, Reddit, and basically any site supported by `yt-dlp`.
 *   **Smart Video Processing**:
     *   **Auto-Compression**: Automatically compresses videos larger than 50MB to fit within Telegram Bot API limits, ensuring delivery even for long content.
@@ -43,6 +47,7 @@ This project is optimized for PaaS platforms like **Koyeb**.
 ### Prerequisites
 *   Python 3.10 or higher.
 *   **FFmpeg** installed and added to your system PATH.
+*   **gallery-dl** (installed automatically via `requirements.txt`).
 
 ### Setup
 1.  Clone the repository:
