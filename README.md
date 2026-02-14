@@ -1,4 +1,4 @@
-# 🤖 Telegram Media Downloader Bot
+#Telegram Media Downloader Bot
 
 A powerful, cloud-ready Telegram bot designed to automatically download, process, and forward media from **Twitter (X), Instagram, TikTok, YouTube (Shorts)**, and thousands of other sites supported by `yt-dlp`.
 
@@ -7,7 +7,7 @@ A powerful, cloud-ready Telegram bot designed to automatically download, process
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
 
-## ✨ Key Features
+## Key Features
 
 *   **Multi-Platform Support**: Downloads high-quality videos from Twitter/X, Instagram, TikTok, Facebook, Reddit, and basically any site supported by `yt-dlp`.
 *   **Smart Video Processing**:
@@ -19,7 +19,7 @@ A powerful, cloud-ready Telegram bot designed to automatically download, process
     *   **Environment Cookies**: Supports loading sensitive cookies via Environment Variables (`COOKIES_CONTENT`), eliminating the need to upload `cookies.txt` to public repositories.
 *   **Storage Efficient**: Auto-deletes downloaded files immediately after forwarding to keep disk usage near zero.
 
-## 🚀 Quick Deployment (Koyeb / Render)
+## Quick Deployment (Koyeb / Render)
 
 This project is optimized for PaaS platforms like **Koyeb**.
 
@@ -38,7 +38,7 @@ This project is optimized for PaaS platforms like **Koyeb**.
 
 5.  Click **Deploy**.
 
-## 💻 Local Installation
+## Local Installation
 
 ### Prerequisites
 *   Python 3.10 or higher.
@@ -60,13 +60,13 @@ This project is optimized for PaaS platforms like **Koyeb**.
     python autovideo/bot.py
     ```
 
-## 🍪 Cookie Management
+## Cookie Management
 
 To download content from age-gated or restricted sites (Twitter NSFW, etc.), the bot needs browser cookies.
 
 *   **Method A (Local)**: Place your `cookies.txt` (Netscape format) in the `autovideo/` directory.
 *   **Method B (Cloud)**: Copy the text content of your `cookies.txt` and paste it into the `COOKIES_CONTENT` environment variable.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
