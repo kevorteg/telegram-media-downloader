@@ -99,19 +99,49 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == 'q':  # Calidad seleccionada
         format_id = data[1]
         url_ref = data[2]
-        
-        # Recuperar la URL original
         url = context.user_data.get('pending_urls', {}).get(url_ref)
         if not url:
-            await query.message.edit_text("❌ Error: El enlace ha expirado o no se encuentra. Por favor, envía el link de nuevo.")
+            await query.message.edit_text("❌ Error: El enlace ha expirado.")
             return
-            
         await process_download(update, context, url, format_id, query.message)
     
+    elif action == 'heavy': # Manejo de video pesado
+        sub_action = data[1]
+        url_ref = data[2]
+        url = context.user_data.get('pending_urls', {}).get(url_ref) or context.user_data.get('heavy_url')
+        media_list = context.user_data.get('heavy_media', [])
+        
+        if sub_action == 'compress':
+            await query.message.edit_text("⏳ Comprimiendo a máxima velocidad... espera un momento.")
+            loop = asyncio.get_running_loop()
+            media = media_list[0]
+            compressed_path = await loop.run_in_executor(None, lambda: video_service.compress_video(media['path']))
+            
+            if compressed_path != media['path']:
+                if os.path.exists(media['path']): os.remove(media['path'])
+                media['path'] = compressed_path
+                # Volver a intentar (ahora debería medir < 50MB o lo que salga)
+                await process_download(update, context, url, 'best', query.message)
+            else:
+                await query.message.edit_text("❌ No se pudo comprimir lo suficiente.")
+        
+        elif sub_action == 'link':
+            await query.message.edit_text(f"🔗 Aquí tienes el link original para descarga externa:\n\n{url}")
+            for m in media_list:
+                if os.path.exists(m['path']): os.remove(m['path'])
+        
+        elif sub_action == 'skip':
+            await query.message.edit_text("⏭️ Video omitido.")
+            for m in media_list:
+                if os.path.exists(m['path']): os.remove(m['path'])
+            await asyncio.sleep(2)
+            try: await query.message.delete()
+            except: pass
+
     elif action == 'dest': # Destino seleccionado
         chat_id = data[1]
-        media_paths = context.user_data.get('pending_media', [])
-        await finalize_sending(update, context, chat_id, media_paths)
+        media_list = context.user_data.get('pending_media', [])
+        await finalize_sending(update, context, chat_id, media_list)
 
 async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url, format_id, status_message):
     # Generar referencia para los callbacks
@@ -147,14 +177,11 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     if not processed_list: return
     
     media = processed_list[0]
-    file_path = media['path']
     size_mb = media.get('size_mb', 0)
     
     # --- MENÚ DE VIDEO PESADO (> 50MB) ---
     if size_mb > 50:
         logger.warning(f"Video pesado detectado: {size_mb:.2f}MB")
-        
-        # Guardar info para los botones
         context.user_data['heavy_media'] = processed_list
         context.user_data['heavy_url'] = url
         
