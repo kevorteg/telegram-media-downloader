@@ -5,13 +5,34 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ChatMemberHandler
+from telegram import Update, ChatMember
 from autovideo.config.settings import settings
 from autovideo.utils.logger import logger
 from autovideo.handlers.start_handler import start
-from autovideo.handlers.link_handler import handle_message_with_links
+from autovideo.handlers.link_handler import handle_message_with_links, handle_callback
 from autovideo.handlers.admin_handler import admin_check
 from autovideo.handlers.error_handler import error_handler
+from autovideo.services.stats_service import stats_service
+from autovideo.services.channel_service import channel_service
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    admin_ids = settings.ADMIN_USER_IDS
+    
+    if user_id in admin_ids or not admin_ids:
+        await update.message.reply_text(stats_service.get_stats_summary(), parse_mode='Markdown')
+    else:
+        await update.message.reply_text("🚫 No tienes permiso para ver estadísticas.")
+
+async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Detecta cuando el bot es añadido a un canal o grupo."""
+    result = update.my_chat_member
+    if result.new_chat_member.status in [ChatMember.ADMINISTRATOR, ChatMember.MEMBER] :
+        chat = result.chat
+        channel_service.add_channel(chat.id, chat.title, chat.type)
+    elif result.new_chat_member.status == ChatMember.LEFT:
+        channel_service.remove_channel(result.chat.id)
 
 def main():
     logger.info("Iniciando AutoVideo Bot...")
@@ -25,22 +46,19 @@ def main():
     # Agregar handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_check))
+    application.add_handler(CommandHandler("stats", stats_command))
+    
+    # Manejar el estado del bot en chats (canales/grupos)
+    application.add_handler(ChatMemberHandler(on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
+    
+    # Manejar selecciones interactivas (Calidad, Destino)
+    application.add_handler(CallbackQueryHandler(handle_callback))
     
     # Manejar mensajes de texto que no son comandos
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message_with_links))
     
     # Manejo de errores
     application.add_error_handler(error_handler)
-
-    # Tareas Programadas (JobQueue)
-    if settings.TWITTER_USERNAME:
-        from autovideo.services.twitter_monitor_service import twitter_monitor
-        job_queue = application.job_queue
-        # Ejecutar cada 60 segundos (1 minuto) para pruebas más rápidas
-        job_queue.run_repeating(twitter_monitor.check_new_likes, interval=60, first=10)
-        logger.info(f"Monitor de Likes activado para @{settings.TWITTER_USERNAME}")
-    else:
-        logger.warning("Monitor de Likes NO activado (falta TWITTER_USERNAME en .env)")
 
     logger.info("Bot en ejecución. Presiona Ctrl+C para detener.")
     application.run_polling()

@@ -9,10 +9,17 @@ A powerful, cloud-ready Telegram bot designed to automatically download, process
 
 ## Key Features
 
-*   **Universal Multi-stage Strategy**: 🚀
+*   **Universal Multi-stage Strategy (v2.0)**: 🚀
     - **Step 1 (Clean)**: Attempts an anonymous download first (No cookies). This ensures compatibility with YouTube, TikTok, and other platforms without credential baggage.
     - **Step 2 (Twitter Hybrid)**: For X.com links, it automatically triggers a `gallery-dl` extraction if standard methods fail.
     - **Step 3 (Authenticated)**: Uses provided `cookies.txt` only as a final fallback for restricted or age-gated content.
+*   **Premium UI/UX**:
+    - **Visual Progress Bar**: Real-time progress updates with a sleek visual bar `[███░░░]`.
+    - **Rich Captions**: Automatically generates captions with title, duration, and source link.
+    - **Media Groups**: Multiple videos in a single link are sent as a single album (MediaGroup).
+*   **Admin & Metrics**:
+    - **`/stats` Command**: View total downloads, unique users, and uptime metrics (restricted to admins).
+*   **Public Mode Ready**: Designed to be shared with users while maintaining a clean chat by auto-deleting original links.
 *   **Multi-Platform Support**: Downloads high-quality videos from Twitter/X, Instagram, TikTok, Facebook, Reddit, and basically any site supported by `yt-dlp`.
 *   **Smart Video Processing**:
     *   **Auto-Compression**: Automatically compresses videos larger than 50MB to fit within Telegram Bot API limits, ensuring delivery even for long content.

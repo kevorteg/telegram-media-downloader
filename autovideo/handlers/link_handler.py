@@ -1,5 +1,4 @@
-import os
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from autovideo.utils.url_utils import extract_urls
 from autovideo.services.validator_service import is_supported_url
@@ -9,106 +8,220 @@ from autovideo.services.publish_service import publish_service
 from autovideo.utils.file_utils import clean_directory
 from autovideo.config.groups import get_destination_channels
 from autovideo.utils.logger import logger
-
 from autovideo.services.history_service import history_service
+from autovideo.services.stats_service import stats_service
+from autovideo.services.channel_service import channel_service
+import asyncio
 
 async def handle_message_with_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if not text:
-        return
+    if not text: return
 
     urls = extract_urls(text)
-    if not urls:
-        return
+    if not urls: return
 
-    # Solo procesamos la primera URL válida que encontremos para evitar spam
-    target_url = None
-    for url in urls:
-        if is_supported_url(url):
-            target_url = url
-            break
-    
+    target_url = next((u for u in urls if is_supported_url(u)), None)
     if not target_url:
         await update.message.reply_text("Enlace no soportado o inválido.")
         return
 
-    # Verificar si ya se procesó
     if history_service.has_processed(target_url):
          await update.message.reply_text("⚠️ Este video ya fue enviado anteriormente.")
          return
 
-    status_message = await update.message.reply_text("⏳ Descargando video...")
+    status_message = await update.message.reply_text("🔍 Analizando opciones de calidad...")
 
-    import asyncio
+    # Extraer formatos antes de descargar
+    loop = asyncio.get_running_loop()
+    formats = await loop.run_in_executor(None, lambda: downloader_service.get_available_formats(target_url))
+    
+    if not formats:
+        await status_message.edit_text("❌ No pude extraer la información del video.")
+        return
+
+    # Guardar la URL en una referencia corta para evitar el límite de 64 bytes de callback_data
+    if 'pending_urls' not in context.user_data:
+        context.user_data['pending_urls'] = {}
+    
+    # Limpiar si hay demasiadas URLs guardadas (mantener últimas 15)
+    if len(context.user_data['pending_urls']) > 15:
+        first_key = next(iter(context.user_data['pending_urls']))
+        del context.user_data['pending_urls'][first_key]
+    
+    # Usar el hash de la URL o un ID simple para referenciarla
+    url_ref = str(abs(hash(target_url)))[:10]
+    context.user_data['pending_urls'][url_ref] = target_url
+
+    # Crear botones de resolución
+    keyboard = []
+    for f in formats:
+        # q|format_id|url_ref
+        keyboard.append([InlineKeyboardButton(f"🎬 {f['height']}p ({f['ext']})", callback_data=f"q|{f['id']}|{url_ref}")])
+    
+    # Guardar ID del mensaje de estado para actualizarlo después
+    context.user_data['last_status_msg_id'] = status_message.message_id
+
+    # --- Lógica de procesamiento automático para Grupos Vinculados ---
+    chat_id = str(update.effective_chat.id)
+    destinations = channel_service.get_all_destinations()
+    is_registered_group = chat_id in destinations
+
+    if is_registered_group:
+        # Si es un grupo registrado, saltamos la selección y descargamos directamente
+        logger.info(f"Procesamiento automático activado para el grupo: {chat_id}")
+        await process_download(update, context, target_url, 'best', status_message)
+        return
+    # -----------------------------------------------------------------
     
     try:
-        # 1. Descargar (ahora retorna lista)
-        # Función para actualizar progreso (se ejecuta en hilo de descarga)
-        def update_progress(percent_str):
-            try:
-                # Filtrar actualizaciones para no floodear la API de Telegram
-                # Solo actualizar cada 20% o cuando termine, o simularlo
-                # Lo mejor es un "debounce" simple o solo actualizar cada X segundos.
-                # Como es complicado pasar estado al callback simple, 
-                # usaremos una aproximación: solo actualizar si cambia el primer dígito (cada 10%)
-                # Ojo: esto corre en otro hilo, necesitamos schedulear la corrutina
-                
-                # Hack simple para rate limit: solo si termina en '0' o '5' (cada 5%)
-                if percent_str.endswith('0') or percent_str.endswith('5'):
-                     asyncio.run_coroutine_threadsafe(
-                        status_message.edit_text(f"⏳ Descargando video... {percent_str}%"),
-                        context.application.loop
-                    )
-            except Exception:
-                pass
-
-        # Ejecutar en executor para no bloquear el loop principal
-        loop = asyncio.get_running_loop()
-        media_list = await loop.run_in_executor(
-            None, 
-            lambda: downloader_service.download_video(target_url, progress_callback=update_progress)
+        await status_message.edit_text(
+            "✨ <b>Video encontrado.</b>\nSelecciona la calidad que prefieres:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
         )
-        
-        if not media_list:
-            await status_message.edit_text("❌ Error al descargar el video (posiblemente borrado o inaccesible).")
-            return
-
-        # 2. Procesar (Validar, comprimir si es necesario)
-        processed_list = video_service.process_video(media_list)
-
-        # 3. Publicar en canales destino
-        await status_message.edit_text("📤 Enviando a los canales...")
-        await publish_service.publish_video(context.bot, processed_list, caption=None)
-        
-        # 4. Modificación: NO enviar video al usuario (Chat Limpio)
-        # Solo confirmación temporal
-        await status_message.edit_text("✅ Enviado al canal.")
-
-        # Marcar como procesado para no repetir
-        history_service.mark_processed(target_url)
-
-        # 5. Limpieza total
-        # Borrar mensaje de confirmación del bot
-        await status_message.delete()
-        
-        # Intentar borrar el mensaje original del usuario (el enlace)
-        try:
-            await update.message.delete()
-        except:
-            pass
-        
-        # 6. Limpieza de archivos
-        for media in processed_list:
-            if os.path.exists(media['path']):
-                os.remove(media['path'])
-        
-        logger.info("Archivos temporales eliminados.")
-
     except Exception as e:
-        await status_message.edit_text(f"❌ Ocurrió un error inesperado.")
-        logger.error(f"Error procesando link: {e}")
-        # Intentar limpiar en caso de error
-        if 'media_list' in locals():
-            for media in media_list:
-                if os.path.exists(media['path']):
-                    os.remove(media['path'])
+        logger.error(f"Error al enviar botones de calidad: {e}")
+        await status_message.edit_text("❌ Error al generar las opciones de calidad. La URL podría ser demasiado larga o inválida.")
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data.split('|')
+    action = data[0]
+
+    if action == 'q':  # Calidad seleccionada
+        format_id = data[1]
+        url_ref = data[2]
+        
+        # Recuperar la URL original
+        url = context.user_data.get('pending_urls', {}).get(url_ref)
+        if not url:
+            await query.message.edit_text("❌ Error: El enlace ha expirado o no se encuentra. Por favor, envía el link de nuevo.")
+            return
+            
+        await process_download(update, context, url, format_id, query.message)
+    
+    elif action == 'dest': # Destino seleccionado
+        chat_id = data[1]
+        media_paths = context.user_data.get('pending_media', [])
+        await finalize_sending(update, context, chat_id, media_paths)
+
+async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url, format_id, status_message):
+    # 1. Descargar
+    def update_progress(percent_str):
+        try:
+            p = int(float(percent_str.strip()))
+            filled = p // 10
+            bar = "█" * filled + "░" * (10 - filled)
+            progress_text = f"⏳ Descargando... <code>[{bar}]</code> {p}%"
+            if p % 10 == 0 or p >= 99:
+                 asyncio.run_coroutine_threadsafe(
+                    status_message.edit_text(progress_text, parse_mode='HTML'),
+                    context.application.loop
+                )
+        except: pass
+
+    await status_message.edit_text("⏳ Iniciando descarga...", reply_markup=None)
+    
+    loop = asyncio.get_running_loop()
+    media_list = await loop.run_in_executor(
+        None, lambda: downloader_service.download_video(url, progress_callback=update_progress, format_id=format_id)
+    )
+    
+    if not media_list:
+        await status_message.edit_text("❌ Error al descargar el video.")
+        return
+
+    # 2. Procesar
+    processed_list = video_service.process_video(media_list)
+    
+    # 3. Decidir destino
+    chat_id = str(update.effective_chat.id)
+    destinations = channel_service.get_all_destinations()
+    
+    # Si viene de un grupo vinculado, enviar allí directamente
+    if chat_id in destinations:
+        await finalize_sending(update, context, chat_id, processed_list, url, status_message)
+        return
+
+    # Si viene de privado, preguntar como siempre
+    if len(destinations) > 1:
+        keyboard = []
+        for d_id, info in destinations.items():
+            keyboard.append([InlineKeyboardButton(f"📡 {info['title']}", callback_data=f"dest|{d_id}")])
+        
+        if len(destinations) >= 2:
+            keyboard.append([InlineKeyboardButton("📢 Ambos canales", callback_data="dest|all")])
+        
+        context.user_data['pending_media'] = processed_list
+        context.user_data['pending_url'] = url
+        
+        await status_message.edit_text(
+            "📍 <b>¿A dónde lo quieres enviar?</b>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
+    else:
+        # Solo uno (o ninguno registrado en JSON, usa env)
+        target_id = next(iter(destinations.keys())) if destinations else settings.TARGET_CHANNEL_ID
+        await finalize_sending(update, context, target_id, processed_list, url, status_message)
+
+async def finalize_sending(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id, media_list, url=None, status_message=None):
+    if not status_message:
+        status_message = update.callback_query.message if update.callback_query else None
+    
+    url = url or context.user_data.get('pending_url')
+    
+    if status_message:
+        await status_message.edit_text("📤 Enviando contenido...")
+    
+    destinations = channel_service.get_all_destinations()
+    targets = []
+
+    if chat_id == 'all':
+        targets = list(destinations.keys())
+    else:
+        targets = [chat_id]
+
+    # 1. Enviar a destino(s) seleccionado(s)
+    for target in targets:
+        try:
+            await publish_service.publish_video_to_chat(context.bot, media_list, target)
+        except Exception as e:
+            logger.error(f"Error enviando a {target}: {e}")
+    
+    # 2. Enviar al usuario (Persistencia) se mantiene como copia personal si es que el bot fue usado en privado
+    if update.effective_chat.type == 'private':
+        user_chat_id = update.effective_chat.id
+        if str(user_chat_id) not in [str(t) for t in targets]:
+            try:
+                await publish_service.publish_video_to_chat(context.bot, media_list, user_chat_id)
+            except: pass
+
+    if status_message:
+        await status_message.edit_text("✅ ¡Video entregado con éxito!")
+        # Borrar el mensaje de éxito después de 5 segundos para mantener limpio el chat
+        async def delete_success_msg():
+            await asyncio.sleep(5)
+            try: await status_message.delete()
+            except: pass
+        asyncio.create_task(delete_success_msg())
+    
+    if url:
+        history_service.mark_processed(url)
+        stats_service.log_download(update.effective_user.id)
+
+    # Limpieza de archivos
+    import os
+    for media in media_list:
+        if os.path.exists(media['path']):
+            try: os.remove(media['path'])
+            except: pass
+    
+    # Intentar borrar el link original (Solo si es un grupo o si es respuesta en privado)
+    try: 
+        msg_to_delete = update.message.message_id if not update.callback_query else update.callback_query.message.reply_to_message.message_id
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_to_delete)
+    except Exception as e: 
+        logger.debug(f"No se pudo borrar el mensaje original: {e}")
