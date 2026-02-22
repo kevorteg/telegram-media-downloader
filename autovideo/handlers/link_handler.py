@@ -17,71 +17,77 @@ async def handle_message_with_links(update: Update, context: ContextTypes.DEFAUL
     text = update.message.text
     if not text: return
 
-    urls = extract_urls(text)
-    if not urls: return
+    all_urls = extract_urls(text)
+    if not all_urls: return
 
-    target_url = next((u for u in urls if is_supported_url(u)), None)
-    if not target_url:
+    # Filtrar solo las URLs soportadas
+    supported_urls = [u for u in all_urls if is_supported_url(u)]
+    
+    if not supported_urls:
         await update.message.reply_text("Enlace no soportado o inválido.")
         return
 
-    if history_service.has_processed(target_url):
-         await update.message.reply_text("⚠️ Este video ya fue enviado anteriormente.")
-         return
+    # Limitar para evitar spam/saturación
+    if len(supported_urls) > 10:
+        await update.message.reply_text("⚠️ Demasiados enlaces en un mensaje. Solo procesaré los primeros 10.")
+        supported_urls = supported_urls[:10]
 
-    status_message = await update.message.reply_text("🔍 Analizando opciones de calidad...")
+    for target_url in supported_urls:
+        if history_service.has_processed(target_url):
+             await update.message.reply_text(f"⚠️ Este video ya fue enviado anteriormente:\n{target_url}")
+             continue
 
-    # Extraer formatos antes de descargar
-    loop = asyncio.get_running_loop()
-    formats = await loop.run_in_executor(None, lambda: downloader_service.get_available_formats(target_url))
-    
-    if not formats:
-        await status_message.edit_text("❌ No pude extraer la información del video.")
-        return
+        status_message = await update.message.reply_text(f"🔍 Analizando: {target_url}...")
 
-    # Guardar la URL en una referencia corta para evitar el límite de 64 bytes de callback_data
-    if 'pending_urls' not in context.user_data:
-        context.user_data['pending_urls'] = {}
-    
-    # Limpiar si hay demasiadas URLs guardadas (mantener últimas 15)
-    if len(context.user_data['pending_urls']) > 15:
-        first_key = next(iter(context.user_data['pending_urls']))
-        del context.user_data['pending_urls'][first_key]
-    
-    # Usar el hash de la URL o un ID simple para referenciarla
-    url_ref = str(abs(hash(target_url)))[:10]
-    context.user_data['pending_urls'][url_ref] = target_url
+        # Extraer formatos antes de descargar
+        loop = asyncio.get_running_loop()
+        try:
+            formats = await loop.run_in_executor(None, lambda: downloader_service.get_available_formats(target_url))
+        except Exception as e:
+            logger.error(f"Error extrayendo info de {target_url}: {e}")
+            await status_message.edit_text(f"❌ Error al obtener info de:\n{target_url}")
+            continue
+        
+        if not formats:
+            await status_message.edit_text(f"❌ No pude extraer la información de:\n{target_url}")
+            continue
 
-    # Crear botones de resolución
-    keyboard = []
-    for f in formats:
-        # q|format_id|url_ref
-        keyboard.append([InlineKeyboardButton(f"🎬 {f['height']}p ({f['ext']})", callback_data=f"q|{f['id']}|{url_ref}")])
-    
-    # Guardar ID del mensaje de estado para actualizarlo después
-    context.user_data['last_status_msg_id'] = status_message.message_id
+        # Guardar la URL en una referencia corta
+        if 'pending_urls' not in context.user_data:
+            context.user_data['pending_urls'] = {}
+        
+        if len(context.user_data['pending_urls']) > 30: # Aumento un poco el límite por si envían muchos
+            first_key = next(iter(context.user_data['pending_urls']))
+            del context.user_data['pending_urls'][first_key]
+        
+        url_ref = str(abs(hash(target_url)))[:10]
+        context.user_data['pending_urls'][url_ref] = target_url
 
-    # --- Lógica de procesamiento automático para Grupos Vinculados ---
-    chat_id = str(update.effective_chat.id)
-    destinations = channel_service.get_all_destinations()
-    is_registered_group = chat_id in destinations
+        # --- Lógica de procesamiento automático para Grupos Vinculados ---
+        chat_id = str(update.effective_chat.id)
+        destinations = channel_service.get_all_destinations()
+        is_registered_group = chat_id in destinations
 
-    if is_registered_group:
-        # Si es un grupo registrado, saltamos la selección y descargamos directamente
-        logger.info(f"Procesamiento automático activado para el grupo: {chat_id}")
-        await process_download(update, context, target_url, 'best', status_message)
-        return
-    # -----------------------------------------------------------------
-    
-    try:
-        await status_message.edit_text(
-            "✨ <b>Video encontrado.</b>\nSelecciona la calidad que prefieres:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        logger.error(f"Error al enviar botones de calidad: {e}")
-        await status_message.edit_text("❌ Error al generar las opciones de calidad. La URL podría ser demasiado larga o inválida.")
+        if is_registered_group:
+            logger.info(f"Procesamiento automático activado para el grupo: {chat_id}")
+            await process_download(update, context, target_url, 'best', status_message)
+            continue # Pasar al siguiente link
+        # -----------------------------------------------------------------
+        
+        # Crear botones de resolución (Solo para chat privado)
+        keyboard = []
+        for f in formats:
+            keyboard.append([InlineKeyboardButton(f"🎬 {f['height']}p ({f['ext']})", callback_data=f"q|{f['id']}|{url_ref}")])
+        
+        try:
+            await status_message.edit_text(
+                f"✨ <b>Video encontrado:</b>\n{target_url}\n\nSelecciona la calidad:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            logger.error(f"Error al enviar botones: {e}")
+            await status_message.edit_text("❌ Error al generar las opciones de calidad.")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
