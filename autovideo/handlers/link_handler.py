@@ -139,10 +139,39 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         await status_message.edit_text("❌ Error al descargar el video.")
         return
 
-    # 2. Procesar
-    processed_list = video_service.process_video(media_list)
+    # 2. Procesar (Solo arreglar metadatos, no comprimir auto)
+    processed_list = video_service.process_video(media_list, auto_compress=False)
+    if not processed_list: return
     
-    # 3. Decidir destino
+    media = processed_list[0]
+    file_path = media['path']
+    size_mb = media.get('size_mb', 0)
+    
+    # --- MENÚ DE VIDEO PESADO (> 50MB) ---
+    if size_mb > 50:
+        logger.warning(f"Video pesado detectado: {size_mb:.2f}MB")
+        
+        # Guardar info para los botones
+        context.user_data['heavy_media'] = processed_list
+        context.user_data['heavy_url'] = url
+        
+        keyboard = [
+            [InlineKeyboardButton("📦 Comprimir (Sube a TG)", callback_data=f"heavy|compress|{url_ref}")],
+            [InlineKeyboardButton("🔗 Ver Link Original", callback_data=f"heavy|link|{url_ref}")],
+            [InlineKeyboardButton("⏭️ Saltar video", callback_data=f"heavy|skip|{url_ref}")]
+        ]
+        
+        await status_message.edit_text(
+            f"⚠️ <b>Video muy pesado!!</b> ({size_mb:.1f}MB)\n"
+            f"Telegram solo permite subir hasta 50MB.\n\n"
+            f"¿Qué quieres hacer?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
+        return
+    # -------------------------------------
+
+    # 3. Decidir destino (Menos de 50MB)
     chat_id = str(update.effective_chat.id)
     destinations = channel_service.get_all_destinations()
     
@@ -151,7 +180,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         await finalize_sending(update, context, chat_id, processed_list, url, status_message)
         return
 
-    # Si viene de privado, preguntar como siempre
+    # Si viene de privado o grupo no registrado, preguntar
     if len(destinations) > 1:
         keyboard = []
         for d_id, info in destinations.items():

@@ -39,16 +39,15 @@ class VideoService:
         """Comprime el video si supera el tamaño objetivo."""
         try:
             output_path = f"{os.path.splitext(input_path)[0]}_compressed.mp4"
-            logger.info(f"Comprimiendo video: {input_path} -> {output_path}")
+            logger.info(f"Comprimiendo video (ultrafast): {input_path} -> {output_path}")
             
-            # Usamos CRF 28 para una compresión decente y rápida
-            # -movflags faststart mueve los metadatos al inicio para streaming
+            # Preset 'ultrafast' para la máxima velocidad
             cmd = [
                 'ffmpeg', '-y',
                 '-i', input_path,
                 '-vcodec', 'libx264',
                 '-crf', '28',
-                '-preset', 'fast',
+                '-preset', 'ultrafast',
                 '-acodec', 'aac',
                 '-b:a', '128k',
                 '-movflags', '+faststart',
@@ -67,11 +66,11 @@ class VideoService:
             logger.error(f"Error comprimiendo video: {e}")
             return input_path
 
-    def process_video(self, media_list: list[dict]) -> list[dict]:
+    def process_video(self, media_list: list[dict], auto_compress: bool = False) -> list[dict]:
         """
         Procesa la lista de videos:
         1. Obtiene dimensiones reales (arregla videos estirados).
-        2. Comprime si > 50MB.
+        2. Comprime si > 50MB (solo si auto_compress=True).
         """
         processed_list = []
         
@@ -82,10 +81,10 @@ class VideoService:
                 logger.error(f"Archivo no encontrado: {file_path}")
                 continue
 
-            # 1. Verificar tamaño y comprimir si es necesario
+            # 1. Verificar tamaño y comprimir solo si se pide explícitamente (ahora es interactivo)
             size_mb = get_file_size_mb(file_path)
-            if size_mb > 50:
-                logger.warning(f"Video {size_mb:.2f}MB > 50MB. Iniciando compresión...")
+            if auto_compress and size_mb > 50:
+                logger.warning(f"Video {size_mb:.2f}MB > 50MB (Auto). Iniciando compresión...")
                 compressed_path = self.compress_video(file_path)
                 
                 # Si se comprimió (el nombre cambió), actualizamos path y borramos el original
