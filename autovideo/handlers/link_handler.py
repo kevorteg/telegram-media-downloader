@@ -114,6 +114,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await finalize_sending(update, context, chat_id, media_paths)
 
 async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url, format_id, status_message):
+    # Generar referencia para los callbacks
+    url_ref = str(abs(hash(url)))[:10]
+
     # 1. Descargar
     def update_progress(percent_str):
         try:
